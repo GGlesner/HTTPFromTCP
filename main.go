@@ -17,27 +17,40 @@ func main() {
 	if err != nil {
 		fmt.Printf("error openning file: %s. error: %s\n", filePath, err.Error())
 	}
-	defer fileHandle.Close()
-	buffer := make([]byte, bufferSize)
-	line := ""
 	writeOuput := func(s string) {
 		fmt.Printf("read: %s\n", s)
 	}
-	for {
-		n, err := fileHandle.Read(buffer)
-		if err != nil {
-			if err == io.EOF {
-				return
-			}
-			fmt.Printf("error reading file: %s. error: %s\n", filePath, err.Error())
-		}
-		parts := strings.Split(string(buffer[:n]), "\n")
-		m := len(parts)
-		line += parts[0]
-		parts[0] = line
-		for i := 1; i < m; i++ {
-			writeOuput(parts[i-1])
-		}
-		line = parts[m-1]
+
+	for line := range parsLines(fileHandle) {
+		writeOuput(line)
 	}
+}
+
+func parsLines(file io.ReadCloser) <-chan string {
+	lines := make(chan string)
+	buffer := make([]byte, bufferSize)
+	line := ""
+	sendLines := func() {
+		defer file.Close()
+		defer close(lines)
+		for {
+			n, err := file.Read(buffer)
+			if err != nil {
+				if err == io.EOF {
+					return
+				}
+				fmt.Printf("error reading file: %s. error: %s\n", filePath, err.Error())
+			}
+			parts := strings.Split(string(buffer[:n]), "\n")
+			m := len(parts)
+			line += parts[0]
+			parts[0] = line
+			for i := range m - 1 {
+				lines <- parts[i]
+			}
+			line = parts[m-1]
+		}
+	}
+	go sendLines()
+	return lines
 }
