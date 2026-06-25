@@ -3,26 +3,35 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
+	"log"
+	"net"
 	"strings"
 )
 
 const (
-	filePath   = "./messages.txt"
+	port       = ":42069"
 	bufferSize = 8
 )
 
 func main() {
-	fileHandle, err := os.Open(filePath)
+	listener, err := net.Listen("tcp", port)
 	if err != nil {
-		fmt.Printf("error openning file: %s. error: %s\n", filePath, err.Error())
+		log.Fatalf("Error listening for TCP traffic on port %s: %s\n", port, err.Error())
 	}
-	writeOuput := func(s string) {
-		fmt.Printf("read: %s\n", s)
-	}
+	defer listener.Close()
+	fmt.Printf("Listening for TCP traffic on port %s\n", port)
 
-	for line := range parsLines(fileHandle) {
-		writeOuput(line)
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			log.Fatalf("Error listening to port %s: %s\n", port, err.Error())
+		}
+		fmt.Println("Accepted connection from ", conn.RemoteAddr())
+
+		for line := range parsLines(conn) {
+			fmt.Println(line)
+		}
+		fmt.Println("Connection to ", conn.RemoteAddr(), " closed")
 	}
 }
 
@@ -35,16 +44,15 @@ func parsLines(file io.ReadCloser) <-chan string {
 		defer close(lines)
 		for {
 			n, err := file.Read(buffer)
+			if err == io.EOF {
+				return
+			}
 			if err != nil {
-				if err == io.EOF {
-					return
-				}
-				fmt.Printf("error reading file: %s. error: %s\n", filePath, err.Error())
+				log.Fatal(err)
 			}
 			parts := strings.Split(string(buffer[:n]), "\n")
 			m := len(parts)
-			line += parts[0]
-			parts[0] = line
+			parts[0] = line + parts[0]
 			for i := range m - 1 {
 				lines <- parts[i]
 			}
