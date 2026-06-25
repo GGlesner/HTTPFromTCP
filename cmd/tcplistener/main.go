@@ -2,10 +2,10 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"strings"
+
+	"HTTPFromTCP/internal/request"
 )
 
 const (
@@ -28,37 +28,12 @@ func main() {
 		}
 		fmt.Println("Accepted connection from ", conn.RemoteAddr())
 
-		for line := range parsLines(conn) {
-			fmt.Println(line)
+		req, err := request.RequestFromReader(conn)
+		if err != nil {
+			log.Fatal(err.Error())
 		}
+		rql := req.RequestLine
+		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", rql.Method, rql.RequestTarget, rql.HttpVersion)
 		fmt.Println("Connection to ", conn.RemoteAddr(), " closed")
 	}
-}
-
-func parsLines(file io.ReadCloser) <-chan string {
-	lines := make(chan string)
-	buffer := make([]byte, bufferSize)
-	line := ""
-	sendLines := func() {
-		defer file.Close()
-		defer close(lines)
-		for {
-			n, err := file.Read(buffer)
-			if err == io.EOF {
-				return
-			}
-			if err != nil {
-				log.Fatal(err)
-			}
-			parts := strings.Split(string(buffer[:n]), "\n")
-			m := len(parts)
-			parts[0] = line + parts[0]
-			for i := range m - 1 {
-				lines <- parts[i]
-			}
-			line = parts[m-1]
-		}
-	}
-	go sendLines()
-	return lines
 }
