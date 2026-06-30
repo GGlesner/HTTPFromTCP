@@ -13,7 +13,9 @@ func NewHeaders() Headers {
 	return make(Headers)
 }
 
-const crlf = "\r\n"
+const (
+	crlf = "\r\n"
+)
 
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	i := bytes.Index(data, []byte(crlf))
@@ -30,9 +32,16 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	if colonIdx == 0 {
 		return 0, false, errors.New("no field-name")
 	}
-	key := string(data[:colonIdx])
+	tchar := "!#$%&'*+-.^_`|~"
+	key := strings.ToLower(string(data[:colonIdx]))
 	if key != strings.Trim(key, " ") {
 		return 0, false, errors.New("no leading nor trailing spaces")
+	}
+	for _, r := range key {
+		chr := string(r)
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && !strings.Contains(tchar, chr) {
+			return 0, false, errors.New("invalid character: " + chr)
+		}
 	}
 	value := strings.Trim(string(data[colonIdx+1:i]), " ")
 	if len(value) == 0 {
