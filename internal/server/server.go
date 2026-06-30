@@ -16,6 +16,7 @@ import (
 type Server struct {
 	listener net.Listener
 	closed   atomic.Bool
+	handler  Handler
 }
 
 type HandlerError struct {
@@ -27,7 +28,7 @@ type Handler func(w io.Writer, req *request.Request) *HandlerError
 
 func Serve(
 	port int,
-	h Handler,
+	handler Handler,
 ) (*Server, error) {
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -35,8 +36,9 @@ func Serve(
 	}
 	s := &Server{
 		listener: listener,
+		handler:  handler,
 	}
-	go s.listen(h)
+	go s.listen()
 	return s, nil
 }
 
@@ -48,7 +50,7 @@ func (s *Server) Close() error {
 	return nil
 }
 
-func (s *Server) listen(h Handler) {
+func (s *Server) listen() {
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
@@ -58,23 +60,29 @@ func (s *Server) listen(h Handler) {
 			log.Printf("Error accepting connection: %v\n", err)
 			continue
 		}
-		go s.handle(conn, h)
+		go s.handle(conn)
 	}
 }
 
 func (s *Server) handle(
 	conn net.Conn,
-	h Handler,
 ) {
 	defer conn.Close()
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		log.Println(err)
+		he := &HandlerError{
+			StatusCode: response.BadRequest,
+			Message:    err.Error(),
+		}
+		_, err := he.Write(conn)
+		if err != nil {
+			log.Println(err)
+		}
 	}
 	buf := bytes.NewBuffer(make([]byte, 0))
-	he := h(buf, req)
+	he := s.handler(buf, req)
 	if he != nil {
-		err := writeError(conn, he)
+		_, err := he.Write(conn)
 		if err != nil {
 			log.Println(err)
 		}
@@ -95,19 +103,17 @@ func (s *Server) handle(
 	}
 }
 
-func writeError(
+func (he *HandlerError) Write(
 	w io.Writer,
-	he *HandlerError,
-) error {
+) (int, error) {
 	err := response.WriteStatusLine(w, he.StatusCode)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	message := []byte(he.Message)
 	err = response.WriteHeaders(w, response.GetDefaultHeaders(len(message)))
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = w.Write(message)
-	return err
+	return w.Write(message)
 }
