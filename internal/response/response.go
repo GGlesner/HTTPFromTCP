@@ -29,7 +29,7 @@ func WriteStatusLine(
 	if !ok {
 		message = ""
 	}
-	statusLine := fmt.Sprintf("HTTP/1.1 %d %s\n", statusCode, message)
+	statusLine := fmt.Sprintf("HTTP/1.1 %d %s\r\n", statusCode, message)
 	_, err := w.Write([]byte(statusLine))
 	return err
 }
