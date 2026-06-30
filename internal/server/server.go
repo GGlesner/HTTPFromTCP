@@ -2,9 +2,7 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"sync/atomic"
@@ -24,7 +22,7 @@ type HandlerError struct {
 	Message    string
 }
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
 func Serve(
 	port int,
@@ -68,52 +66,24 @@ func (s *Server) handle(
 	conn net.Conn,
 ) {
 	defer conn.Close()
+	w := response.NewWriter(conn)
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		he := &HandlerError{
-			StatusCode: response.BadRequest,
-			Message:    err.Error(),
-		}
-		_, err := he.Write(conn)
-		if err != nil {
-			log.Println(err)
-		}
-	}
-	buf := bytes.NewBuffer(make([]byte, 0))
-	he := s.handler(buf, req)
-	if he != nil {
-		_, err := he.Write(conn)
-		if err != nil {
-			log.Println(err)
-		}
+		log.Println(err)
 		return
 	}
-	err = response.WriteStatusLine(conn, response.OK)
-	if err != nil {
-		log.Println(err)
-	}
-	header := response.GetDefaultHeaders(buf.Len())
-	err = response.WriteHeaders(conn, header)
-	if err != nil {
-		log.Println(err)
-	}
-	_, err = conn.Write(buf.Bytes())
-	if err != nil {
-		log.Println(err)
-	}
-}
-
-func (he *HandlerError) Write(
-	w io.Writer,
-) (int, error) {
-	err := response.WriteStatusLine(w, he.StatusCode)
-	if err != nil {
-		return 0, err
-	}
-	message := []byte(he.Message)
-	err = response.WriteHeaders(w, response.GetDefaultHeaders(len(message)))
-	if err != nil {
-		return 0, err
-	}
-	return w.Write(message)
+	s.handler(w, req)
+	// err = w.WriteStatusLine(response.OK)
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+	// header := response.GetDefaultHeaders(buf.Len())
+	// err = w.WriteHeaders(header)
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+	// _, err = conn.Write(buf.Bytes())
+	// if err != nil {
+	// 	log.Println(err)
+	// }
 }

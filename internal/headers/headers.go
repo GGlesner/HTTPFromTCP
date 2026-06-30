@@ -25,6 +25,10 @@ func (h Headers) Get(key string) (string, bool) {
 	}
 }
 
+func (h Headers) Set(key string, val string) {
+	h[key] = val
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	i := bytes.Index(data, []byte(crlf))
 	if i < 0 {

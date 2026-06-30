@@ -1,7 +1,7 @@
 package main
 
 import (
-	"io"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -14,27 +14,60 @@ import (
 
 const port = 42069
 
-func defaultHandler(w io.Writer, req *request.Request) *server.HandlerError {
+func defaultHandler(
+	w *response.Writer,
+	req *request.Request,
+) {
 	target := req.RequestLine.RequestTarget
 	var status response.StatusCode
 	message := ""
+	h1 := ""
 	switch target {
 	case "/yourproblem":
 		status = response.BadRequest
-		message = "Your problem is not my problem\n"
+		h1 = "Bad Request"
+		message = "Your request honestly kinda sucked."
 	case "/myproblem":
 		status = response.InternalServerError
-		message = "Woopsie, my bad\n"
+		h1 = "Internal Server Error"
+		message = "Okay, you know what? This one is on me."
 	default:
-		_, err := w.Write([]byte("All good, frfr\n"))
-		if err != nil {
-			log.Println(err)
-		}
-		return nil
+		status = response.OK
+		h1 = "Success!"
+		message = "Your request was an absolute banger."
 	}
-	return &server.HandlerError{
-		StatusCode: status,
-		Message:    message,
+	if err := w.WriteStatusLine(status); err != nil {
+		log.Println(err)
+		return
+	}
+	h := response.GetDefaultHeaders(0)
+	codeToMessage := map[response.StatusCode]string{
+		response.OK:                  "OK",
+		response.BadRequest:          "Bad Request",
+		response.InternalServerError: "Internal Server Error",
+	}
+	body := fmt.Appendf(nil,
+		`<html>
+			<head>
+				<title>%d %s</title>
+			</head>
+			<body>
+				<h1>%s</h1>
+				<p>%s</p>
+			</body>
+		</html>`,
+		status, codeToMessage[status],
+		h1,
+		message,
+	)
+	h.Set("Content-Length", fmt.Sprintf("%d", len(body)))
+	if err := w.WriteHeaders(h); err != nil {
+		log.Println(err)
+		return
+	}
+	_, err := w.WriteBody(body)
+	if err != nil {
+		log.Println(err)
 	}
 }
 
