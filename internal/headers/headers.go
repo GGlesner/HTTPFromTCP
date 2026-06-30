@@ -47,6 +47,11 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	if len(value) == 0 {
 		return 0, false, errors.New("no value")
 	}
-	h[key] = value
+	previous, ok := h[key]
+	if !ok {
+		h[key] = value
+	} else {
+		h[key] = previous + "," + value
+	}
 	return i + 2, false, nil
 }
