@@ -32,8 +32,16 @@ func main() {
 		if err != nil {
 			log.Fatal(err.Error())
 		}
+
 		rql := req.RequestLine
 		fmt.Printf("Request line:\n- Method: %s\n- Target: %s\n- Version: %s\n", rql.Method, rql.RequestTarget, rql.HttpVersion)
 		fmt.Println("Connection to ", conn.RemoteAddr(), " closed")
+
+		headers := req.Headers
+		fmt.Print("Headers:\n")
+		for key, value := range headers {
+			fmt.Printf("- %s: %s\n", key, value)
+		}
+
 	}
 }
