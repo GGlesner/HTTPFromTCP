@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"unicode"
 
@@ -14,7 +15,7 @@ import (
 
 const (
 	crlf       = "\r\n"
-	BufferSize = 1024
+	BufferSize = 8
 )
 
 type ParsingState int
@@ -22,13 +23,17 @@ type ParsingState int
 const (
 	ParsingRequestLine ParsingState = iota
 	ParsingHeaders
+	ParsingBody
 	Done
 )
 
 type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
-	state       ParsingState
+	Body        []byte
+
+	state          ParsingState
+	bodyLengthRead int
 }
 
 type RequestLine struct {
@@ -41,6 +46,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 	req := &Request{
 		state:   ParsingRequestLine,
 		Headers: headers.NewHeaders(),
+		Body:    make([]byte, 0),
 	}
 	buffer := make([]byte, BufferSize)
 	bytesRead := 0
@@ -134,9 +140,27 @@ func (r *Request) parseSingle(buffer []byte) (int, error) {
 			return 0, err
 		}
 		if done {
-			r.state = Done
+			r.state = ParsingBody
 		}
 		return n, nil
+	case ParsingBody:
+		length, ok := r.Headers.Get("Content-Length")
+		if !ok {
+			r.state = Done
+			return len(buffer), nil
+		}
+		numBytes, err := strconv.Atoi(length)
+		if err != nil {
+			return 0, errors.New("invalid Content-Length value: " + length)
+		}
+		r.Body = append(r.Body, buffer...)
+		r.bodyLengthRead += len(buffer)
+		if numBytes < r.bodyLengthRead {
+			return 0, fmt.Errorf("incorrect Content-Length value: expected %s, actual %d", length, len(r.Body))
+		} else if r.bodyLengthRead == numBytes {
+			r.state = Done
+		}
+		return len(buffer), err
 	case Done:
 		return 0, fmt.Errorf("error: trying to read from a done state")
 	default:

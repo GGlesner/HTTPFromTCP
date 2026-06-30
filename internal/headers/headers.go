@@ -17,6 +17,14 @@ const (
 	crlf = "\r\n"
 )
 
+func (h Headers) Get(key string) (string, bool) {
+	if val, ok := h[strings.ToLower(key)]; ok {
+		return val, true
+	} else {
+		return "", false
+	}
+}
+
 func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	i := bytes.Index(data, []byte(crlf))
 	if i < 0 {
@@ -53,7 +61,7 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	if previous, ok := h[key]; !ok {
 		h[key] = value
 	} else {
-		h[key] = previous + "," + value
+		h[key] = previous + ", " + value
 	}
 	return i + 2, false, nil
 }

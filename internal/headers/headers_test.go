@@ -72,7 +72,7 @@ func TestHeadersParse(t *testing.T) {
 	n, done, err = headers.Parse(data[23:])
 	require.NoError(t, err)
 	require.NotNil(t, headers)
-	assert.Equal(t, "localhost:42069,localhost:69420", headers["host"])
+	assert.Equal(t, "localhost:42069, localhost:69420", headers["host"])
 	assert.Equal(t, 23, n)
 	assert.False(t, done)
 
