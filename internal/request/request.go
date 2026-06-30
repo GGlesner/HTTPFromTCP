@@ -3,20 +3,32 @@ package request
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"unicode"
+
+	"HTTPFromTCP/internal/headers"
 )
 
 const (
-	CRLF       = "\r\n"
+	crlf       = "\r\n"
 	BufferSize = 1024
+)
+
+type ParsingState int
+
+const (
+	ParsingRequestLine ParsingState = iota
+	ParsingHeaders
+	Done
 )
 
 type Request struct {
 	RequestLine RequestLine
-	state       int
+	Headers     headers.Headers
+	state       ParsingState
 }
 
 type RequestLine struct {
@@ -26,11 +38,13 @@ type RequestLine struct {
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	req := &Request{}
+	req := &Request{
+		state:   ParsingRequestLine,
+		Headers: headers.NewHeaders(),
+	}
 	buffer := make([]byte, BufferSize)
 	bytesRead := 0
-	bytesParsed := 0
-	for req.state < 1 {
+	for req.state < Done {
 		if bytesRead >= len(buffer) {
 			newBuf := make([]byte, len(buffer)*2)
 			copy(newBuf, buffer)
@@ -38,21 +52,21 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		}
 		n, err := reader.Read(buffer[bytesRead:])
 		if err == io.EOF {
-			req.state = 1
+			if req.state < Done {
+				return nil, fmt.Errorf("incomplete request, in state %d, read bytes on EOF: %d", req.state, bytesRead)
+			}
 			break
 		}
 		if err != nil {
 			return nil, err
 		}
 		bytesRead += n
-		bytesParsed, err = req.parse(buffer[:bytesRead])
+		bytesParsed, err := req.parse(buffer[:bytesRead])
 		if err != nil {
 			return nil, err
 		}
 		if bytesParsed > 0 {
-			newBuf := make([]byte, bytesRead-bytesParsed)
-			copy(newBuf, buffer[bytesParsed:bytesRead])
-			buffer = newBuf
+			copy(buffer, buffer[bytesParsed:bytesRead])
 			bytesRead -= bytesParsed
 		}
 	}
@@ -60,7 +74,7 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 }
 
 func parseRequestLine(buffer []byte) (*RequestLine, int, error) {
-	i := bytes.Index(buffer, []byte(CRLF))
+	i := bytes.Index(buffer, []byte(crlf))
 	if i < 0 {
 		return nil, 0, nil
 	}
@@ -75,7 +89,7 @@ func parseRequestLine(buffer []byte) (*RequestLine, int, error) {
 		}
 	}
 	httpAndVersion := strings.Split(parts[2], "/")
-	if len(httpAndVersion) < 2 || httpAndVersion[0] != "HTTP" || httpAndVersion[1] != "1.1" {
+	if len(httpAndVersion) != 2 || httpAndVersion[0] != "HTTP" || httpAndVersion[1] != "1.1" {
 		return nil, 0, fmt.Errorf("expected last part to be HTTP/1.1, got: %s", parts[2])
 	}
 	return &RequestLine{
@@ -88,21 +102,44 @@ func parseRequestLine(buffer []byte) (*RequestLine, int, error) {
 }
 
 func (r *Request) parse(buffer []byte) (int, error) {
-	switch r.state {
-	case 0:
-		rql, n, err := parseRequestLine(buffer)
+	bytesParsed := 0
+	for r.state < Done {
+		n, err := r.parseSingle(buffer[bytesParsed:])
 		if err != nil {
 			return 0, err
 		}
+		bytesParsed += n
 		if n == 0 {
-			return 0, nil
+			break
+		}
+	}
+	return bytesParsed, nil
+}
+
+func (r *Request) parseSingle(buffer []byte) (int, error) {
+	switch r.state {
+	case ParsingRequestLine:
+		rql, n, err := parseRequestLine(buffer)
+		if err != nil {
+			return 0, err
+		} else if n == 0 {
+			return n, nil
 		}
 		r.RequestLine = *rql
-		r.state = 1
+		r.state = ParsingHeaders
 		return n, nil
-	case 1:
+	case ParsingHeaders:
+		n, done, err := r.Headers.Parse(buffer)
+		if err != nil {
+			return 0, err
+		}
+		if done {
+			r.state = Done
+		}
+		return n, nil
+	case Done:
 		return 0, fmt.Errorf("error: trying to read from a done state")
 	default:
-		return 0, nil
+		return 0, errors.New("unknown state")
 	}
 }

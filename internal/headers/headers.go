@@ -34,8 +34,11 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 	}
 	tchar := "!#$%&'*+-.^_`|~"
 	key := strings.ToLower(string(data[:colonIdx]))
-	if key != strings.Trim(key, " ") {
+	if key != strings.TrimSpace(key) {
 		return 0, false, errors.New("no leading nor trailing spaces")
+	}
+	if strings.ContainsAny(key, "\t") {
+		return 0, false, errors.New("no whitespaces")
 	}
 	for _, r := range key {
 		chr := string(r)
@@ -43,12 +46,11 @@ func (h Headers) Parse(data []byte) (n int, done bool, err error) {
 			return 0, false, errors.New("invalid character: " + chr)
 		}
 	}
-	value := strings.Trim(string(data[colonIdx+1:i]), " ")
+	value := strings.TrimSpace(string(data[colonIdx+1 : i]))
 	if len(value) == 0 {
 		return 0, false, errors.New("no value")
 	}
-	previous, ok := h[key]
-	if !ok {
+	if previous, ok := h[key]; !ok {
 		h[key] = value
 	} else {
 		h[key] = previous + "," + value
