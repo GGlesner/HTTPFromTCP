@@ -45,6 +45,8 @@ func handler(
 		handler400(w, req)
 	case "/myproblem":
 		handler500(w, req)
+	case "/video":
+		videoHandler(w, req)
 	default:
 		handler200(w, req)
 	}
@@ -125,6 +127,34 @@ func handler500(
 	_, err := w.WriteBody(body)
 	if err != nil {
 		log.Println(err)
+		return
+	}
+}
+
+func videoHandler(
+	w *response.Writer,
+	req *request.Request,
+) {
+	video, err := os.ReadFile("assets/vim.mp4")
+	if err != nil {
+		log.Println(err)
+		handler500(w, req)
+		return
+	}
+	if err := w.WriteStatusLine(response.OK); err != nil {
+		log.Println(err)
+		return
+	}
+	h := headers.NewHeaders()
+	h["Content-Type"] = "video/mp4"
+	h["Content-Length"] = fmt.Sprintf("%d", len(video))
+	if err = w.WriteHeaders(h); err != nil {
+		log.Println(err)
+		return
+	}
+	if _, err = w.WriteBody(video); err != nil {
+		log.Println(err)
+		return
 	}
 }
 
