@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"HTTPFromTCP/internal/headers"
 	"HTTPFromTCP/internal/request"
 	"HTTPFromTCP/internal/response"
 	"HTTPFromTCP/internal/server"
@@ -142,9 +145,11 @@ func httpbinHandler(
 		log.Println(err)
 		return
 	}
+
 	h := response.GetDefaultHeaders(0)
 	delete(h, "Content-Length")
 	h["Transfer-Encoding"] = "chunked"
+	h["Trailers"] = "X-Content-Sha256, X-Content-Length"
 	err = w.WriteHeaders(h)
 	if err != nil {
 		log.Println(err)
@@ -152,24 +157,36 @@ func httpbinHandler(
 	}
 
 	p := make([]byte, 1024)
+	body := make([]byte, 0)
 	for {
 		n, err := res.Body.Read(p)
 		if err == io.EOF {
-			_, err = w.WriteChunkedBodyDone()
+			_, err = w.WriteBody([]byte("0\r\n"))
 			if err != nil {
 				log.Println(err)
+				return
 			}
-			return
+			break
 		} else if err != nil {
 			log.Println(err)
 			return
 		}
-		log.Println(n)
 		_, err = w.WriteChunkedBody(p[:n])
 		if err != nil {
 			log.Println(err)
 			return
 		}
+		body = append(body, p[:n]...)
+	}
+
+	hash := sha256.Sum256(body)
+	t := headers.NewHeaders()
+	t["X-Content-Sha256"] = hex.EncodeToString(hash[:])
+	t["X-Content-Length"] = fmt.Sprintf("%d", len(body))
+	err = w.WriteTrailers(t)
+	if err != nil {
+		log.Println(err)
+		return
 	}
 }
 
