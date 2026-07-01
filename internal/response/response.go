@@ -92,3 +92,31 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 	}
 	return w.IOWriter.Write(p)
 }
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	nBytes := 0
+	n, err := w.WriteBody(fmt.Appendf(nil, "%X\r\n", len(p)))
+	if err != nil {
+		return 0, err
+	}
+	nBytes += n
+	n, err = w.WriteBody(p)
+	if err != nil {
+		return 0, err
+	}
+	nBytes += n
+	n, err = w.WriteBody([]byte("\r\n"))
+	if err != nil {
+		return 0, err
+	}
+	nBytes += n
+	return nBytes, nil
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	n, err := w.WriteBody([]byte("0\r\n\r\n"))
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
+}
